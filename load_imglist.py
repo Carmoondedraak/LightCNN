@@ -9,27 +9,31 @@ def default_loader(path):
     return img
 
 def default_list_reader(fileList):
-    imgList = []
+    imgDict = {}
     with open(fileList, 'r') as file:
         for line in file.readlines():
             imgPath, label = line.strip().split(' ')
-            imgList.append((imgPath, int(label)))
-    return imgList
+            imgDict[imgPath] = int(label)
+    return imgDict
 
 class ImageList(data.Dataset):
-    def __init__(self, root, fileList, transform=None, list_reader=default_list_reader, loader=default_loader):
+    def __init__(self, root, fileList, path, transform=None, list_reader=default_list_reader, loader=default_loader):
         self.root      = root
-        self.imgList   = list_reader(fileList)
+        self.imgDict   = list_reader(fileList)
         self.transform = transform
         self.loader    = loader
+        self.path = path
 
     def __getitem__(self, index):
-        imgPath, target = self.imgList[index]
-        img = self.loader(os.path.join(self.root, imgPath))
+        imgPath =  sorted(glob.glob("%s/*.png" % path))
+        imgkey = imgPath.split('/')[-1].split('mirror')[-1].split('train')[-1].split('.')[0]
+        imgkey = imgkey + '.jpg'
+        target = self.imgDict[imgkey]
+        img = self.loader(os.path.join(imgPath))
 
         if self.transform is not None:
             img = self.transform(img)
         return img, target
 
     def __len__(self):
-        return len(self.imgList)
+        return len(self.imgDict)

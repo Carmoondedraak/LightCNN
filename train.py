@@ -42,19 +42,19 @@ parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=100, type=int,
                     metavar='N', help='print frequency (default: 100)')
-parser.add_argument('--model', default='', type=str, metavar='Model',
+parser.add_argument('--model', default='LightCNN-9', type=str, metavar='Model',
                     help='model type: LightCNN-9, LightCNN-29, LightCNN-29v2')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('--root_path', default='', type=str, metavar='PATH',
                     help='path to root path of images (default: none)')
-parser.add_argument('--train_list', default='', type=str, metavar='PATH',
+parser.add_argument('--train_list', default='../CelebA/Anno/whitelistedCelebs.txt', type=str, metavar='PATH',
                     help='path to training list (default: none)')
-parser.add_argument('--val_list', default='', type=str, metavar='PATH',
+parser.add_argument('--val_list', default='../CelebA/Anno/whitelistedCelebs.txt', type=str, metavar='PATH',
                     help='path to validation list (default: none)')
-parser.add_argument('--save_path', default='', type=str, metavar='PATH',
+parser.add_argument('--save_path', default='saves', type=str, metavar='PATH',
                     help='path to save checkpoint (default: none)')
-parser.add_argument('--num_classes', default=99891, type=int,
+parser.add_argument('--num_classes', default=7417, type=int,
                     metavar='N', help='number of classes (default: 99891)')
 
 def main():
@@ -110,23 +110,23 @@ def main():
 
     #load image
     train_loader = torch.utils.data.DataLoader(
-        ImageList(root=args.root_path, fileList=args.train_list, 
-            transform=transforms.Compose([ 
+        ImageList(root=args.root_path, fileList=args.train_list,path='../PyTorch-GAN/data/train',
+            transform=transforms.Compose([
                 transforms.RandomCrop(128),
-                transforms.RandomHorizontalFlip(), 
+                transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
             ])),
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        ImageList(root=args.root_path, fileList=args.val_list, 
-            transform=transforms.Compose([ 
+        ImageList(root=args.root_path, fileList=args.val_list,path='../PyTorch-GAN/data/train',
+            transform=transforms.Compose([
                 transforms.CenterCrop(128),
                 transforms.ToTensor(),
             ])),
         batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)   
+        num_workers=args.workers, pin_memory=True)
 
     # define loss function and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -134,7 +134,7 @@ def main():
     if args.cuda:
         criterion.cuda()
 
-    validate(val_loader, model, criterion)    
+    validate(val_loader, model, criterion)
 
     for epoch in range(args.start_epoch, args.epochs):
 
