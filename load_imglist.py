@@ -3,7 +3,7 @@ import torch.utils.data as data
 from PIL import Image
 import os
 import os.path
-
+import glob
 def default_loader(path):
     img = Image.open(path).convert('L')
     return img
@@ -23,17 +23,20 @@ class ImageList(data.Dataset):
         self.transform = transform
         self.loader    = loader
         self.path = path
+        if self.path == 'train':
+            self.files =  sorted(glob.glob("%s/train/*.png" % self.root))
+        elif self.path == 'val':
+            self.files = sorted(glob.glob("%s/test/*.png" % self.root))
 
     def __getitem__(self, index):
-        imgPath =  sorted(glob.glob("%s/*.png" % path))
-        imgkey = imgPath.split('/')[-1].split('mirror')[-1].split('train')[-1].split('.')[0]
-        imgkey = imgkey + '.jpg'
+        imgPath = self.files[index]
+        imgkey = imgPath.split('/')[-1]
         target = self.imgDict[imgkey]
         img = self.loader(os.path.join(imgPath))
 
         if self.transform is not None:
             img = self.transform(img)
-        return img, target
+        return img, int(target)
 
     def __len__(self):
         return len(self.imgDict)

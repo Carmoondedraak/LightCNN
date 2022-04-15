@@ -9,6 +9,8 @@ import argparse
 import os
 import shutil
 import time
+from PIL import Image, ImageOps
+import glob
 
 import torch
 import torch.nn as nn
@@ -23,23 +25,23 @@ import torchvision.datasets as datasets
 import numpy as np
 import cv2
 
-from light_cnn import LightCNN_9Layers, LightCNN_29Layers, LightCNN_29Layers_v2
+from light_cnn import LightCNN_9Layers
 from load_imglist import ImageList
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Feature Extracting')
 parser.add_argument('--arch', '-a', metavar='ARCH', default='LightCNN')
 parser.add_argument('--cuda', '-c', default=True)
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
+parser.add_argument('--resume', default='saveslightCNN_11_checkpoint.pth.tar', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
-parser.add_argument('--model', default='', type=str, metavar='Model',
+parser.add_argument('--model', default='LightCNN-9', type=str, metavar='Model',
                     help='model type: LightCNN-9, LightCNN-29')
 parser.add_argument('--root_path', default='', type=str, metavar='PATH', 
                     help='root path of face images (default: none).')
-parser.add_argument('--img_list', default='', type=str, metavar='PATH', 
+parser.add_argument('--img_list', default='CelebA/Anno/new_labels_test.txt', type=str, metavar='PATH', 
                     help='list of face images for feature extraction (default: none).')
-parser.add_argument('--save_path', default='', type=str, metavar='PATH', 
+parser.add_argument('--save_path', default='save_features', type=str, metavar='PATH', 
                     help='save root path for features of face images.')
-parser.add_argument('--num_classes', default=79077, type=int,
+parser.add_argument('--num_classes', default=7417, type=int,
                     metavar='N', help='mini-batch size (default: 79077)')
 
 def main():
@@ -67,25 +69,37 @@ def main():
     else:
         print("=> no checkpoint found at '{}'".format(args.resume))
 
+    criterion = nn.CrossEntropyLoss()
+    criterion.cuda()
+
+
     img_list  = read_list(args.img_list)
-    transform = transforms.Compose([transforms.ToTensor()])
+    transform = transforms.Compose([transforms.Resize((128,128), Image.BICUBIC), transforms.ToTensor()])
     count     = 0
     input     = torch.zeros(1, 1, 128, 128)
     for img_name in img_list:
         count = count + 1
-        img   = cv2.imread(os.path.join(args.root_path, img_name), cv2.IMREAD_GRAYSCALE)
-        img   = np.reshape(img, (128, 128, 1))
+        
+        # creating an og_image object
+        dir_name = args.root_path + '/'+ img_name 
+        img = Image.open(dir_name)
+        img = ImageOps.grayscale(img)
         img   = transform(img)
         input[0,:,:,:] = img
 
         start = time.time()
         if args.cuda:
             input = input.cuda()
-        input_var   = torch.autograd.Variable(input, volatile=True)
-        _, features = model(input_var)
+            target     = target.cuda()
+        input_var  = torch.autograd.Variable(input)
+        target_var = torch.autograd.Variable(target)
+        
+        output, features = model(input_var)
+        loss   = criterion(output, target_var)
+        print(loss, loss.shape()
         end         = time.time() - start
         print("{}({}/{}). Time: {}".format(os.path.join(args.root_path, img_name), count, len(img_list), end))
-        save_feature(args.save_path, img_name, features.data.cpu().numpy()[0])
+        # save_feature(args.save_path, img_name, features.data.cpu().numpy()[0])
 
 
 def read_list(list_path):

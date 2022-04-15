@@ -8,6 +8,7 @@ import argparse
 import os
 import shutil
 import time
+import glob
 
 import torch
 import torch.nn as nn
@@ -17,16 +18,20 @@ import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
+import torch.utils
+# from torch.utils.tensorboard import SummaryWriter
 
 import numpy as np
-
-from light_cnn import LightCNN_9Layers, LightCNN_29Layers, LightCNN_29Layers_v2
+from PIL import Image, ImageOps
+from light_cnn import LightCNN_9Layers
 from load_imglist import ImageList
+
+
 
 parser = argparse.ArgumentParser(description='PyTorch Light CNN Training')
 parser.add_argument('--arch', '-a', metavar='ARCH', default='LightCNN')
 parser.add_argument('--cuda', '-c', default=True)
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=3, type=int, metavar='N',
                     help='number of data loading workers (default: 16)')
 parser.add_argument('--epochs', default=80, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -44,19 +49,20 @@ parser.add_argument('--print-freq', '-p', default=100, type=int,
                     metavar='N', help='print frequency (default: 100)')
 parser.add_argument('--model', default='LightCNN-9', type=str, metavar='Model',
                     help='model type: LightCNN-9, LightCNN-29, LightCNN-29v2')
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
+parser.add_argument('--resume', default='saves/lightCNN_80_checkpoint1.pth.tar', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('--root_path', default='', type=str, metavar='PATH',
                     help='path to root path of images (default: none)')
-parser.add_argument('--train_list', default='../CelebA/Anno/whitelistedCelebs.txt', type=str, metavar='PATH',
+parser.add_argument('--train_list', default='CelebA/Anno/new_labels_train.txt', type=str, metavar='PATH',
                     help='path to training list (default: none)')
-parser.add_argument('--val_list', default='../CelebA/Anno/whitelistedCelebs.txt', type=str, metavar='PATH',
+parser.add_argument('--val_list', default='CelebA/Anno/new_labels_test.txt', type=str, metavar='PATH',
                     help='path to validation list (default: none)')
-parser.add_argument('--save_path', default='saves', type=str, metavar='PATH',
+parser.add_argument('--save_path', default='saves/', type=str, metavar='PATH',
                     help='path to save checkpoint (default: none)')
 parser.add_argument('--num_classes', default=7417, type=int,
                     metavar='N', help='number of classes (default: 99891)')
 
+# writer = SummaryWriter()
 def main():
     global args
     args = parser.parse_args()
@@ -71,46 +77,48 @@ def main():
     else:
         print('Error model type\n')
 
-    if args.cuda:
-        model = torch.nn.DataParallel(model).cuda()
+
+    model = torch.nn.DataParallel(model).cuda()
 
     print(model)
-
-    # large lr for last fc parameters
     params = []
     for name, value in model.named_parameters():
         if 'bias' in name:
             if 'fc2' in name:
-                params += [{'params':value, 'lr': 20 * args.lr, 'weight_decay': 0}]
+                params += [{'params':value, 'lr': 20 * 4.182558210365071e-05, 'weight_decay': 0}]
             else:
-                params += [{'params':value, 'lr': 2 * args.lr, 'weight_decay': 0}]
+                params += [{'params':value, 'lr': 2 * 4.182558210365071e-05, 'weight_decay': 0}]
         else:
             if 'fc2' in name:
-                params += [{'params':value, 'lr': 10 * args.lr}]
+                params += [{'params':value, 'lr': 10 * 4.182558210365071e-05}]
             else:
-                params += [{'params':value, 'lr': 1 * args.lr}]
+                params += [{'params':value, 'lr': 1 * 4.182558210365071e-05}]
+    
 
     optimizer = torch.optim.SGD(params, args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
     # optionally resume from a checkpoint
+
+        
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
             checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
             model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
     cudnn.benchmark = True
-
-    #load image
+    
+    # load image
     train_loader = torch.utils.data.DataLoader(
-        ImageList(root=args.root_path, fileList=args.train_list,path='../PyTorch-GAN/data/train',
+        ImageList(root=args.root_path, fileList=args.train_list,path= 'train',
             transform=transforms.Compose([
                 transforms.RandomCrop(128),
                 transforms.RandomHorizontalFlip(),
@@ -120,7 +128,7 @@ def main():
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        ImageList(root=args.root_path, fileList=args.val_list,path='../PyTorch-GAN/data/train',
+        ImageList(root=args.root_path, fileList=args.val_list,path= 'test',
             transform=transforms.Compose([
                 transforms.CenterCrop(128),
                 transforms.ToTensor(),
@@ -130,9 +138,8 @@ def main():
 
     # define loss function and optimizer
     criterion = nn.CrossEntropyLoss()
+    criterion.cuda()
 
-    if args.cuda:
-        criterion.cuda()
 
     validate(val_loader, model, criterion)
 
@@ -141,17 +148,19 @@ def main():
         adjust_learning_rate(optimizer, epoch)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch)
+        loss = train(train_loader, model, criterion, optimizer, epoch)
 
         # evaluate on validation set
         prec1 = validate(val_loader, model, criterion)
 
-        save_name = args.save_path + 'lightCNN_' + str(epoch+1) + '_checkpoint.pth.tar'
+        save_name = args.save_path + 'lightCNN_' + str(epoch+1) + '_checkpoint1.pth.tar'
         save_checkpoint({
             'epoch': epoch + 1,
             'arch': args.arch,
             'state_dict': model.state_dict(),
             'prec1': prec1,
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': loss,
         }, save_name)
 
 
@@ -179,9 +188,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output.data, target, topk=(1,5))
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+        losses.update(loss.data.item(), input.size(0))
+        top1.update(prec1.item(), input.size(0))
+        top5.update(prec5.item(), input.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -192,7 +201,15 @@ def train(train_loader, model, criterion, optimizer, epoch):
         batch_time.update(time.time() - end)
         end = time.time()
 
+        
+        
         if i % args.print_freq == 0:
+            # writer.add_scalar('loss/train', losses.val, epoch)
+            # writer.add_scalar('prec@1',top1.val, epoch)
+            # writer.add_scalar('prec@5',top5.val, epoch)
+            # writer.add_scalar('loss/train', losses.avg, epoch)
+            # writer.add_scalar('prec@1',top1.avg, epoch)
+            # writer.add_scalar('prec@5',top5.avg, epoch)
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
@@ -201,8 +218,12 @@ def train(train_loader, model, criterion, optimizer, epoch):
                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
                    epoch, i, len(train_loader), batch_time=batch_time,
                    data_time=data_time, loss=losses, top1=top1, top5=top5))
+    return loss
 
 def validate(val_loader, model, criterion):
+    global args
+    args = parser.parse_args()
+
     batch_time = AverageMeter()
     losses     = AverageMeter()
     top1       = AverageMeter()
@@ -213,20 +234,21 @@ def validate(val_loader, model, criterion):
 
     end = time.time()
     for i, (input, target) in enumerate(val_loader):
+        print(i)
         input      = input.cuda()
         target     = target.cuda()
-        input_var  = torch.autograd.Variable(input, volatile=True)
-        target_var = torch.autograd.Variable(target, volatile=True)
+        with torch.no_grad():
+            input_var  = torch.autograd.Variable(input)
+            target_var = torch.autograd.Variable(target)
 
         # compute output
         output, _ = model(input_var)
         loss   = criterion(output, target_var)
-
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output.data, target, topk=(1,5))
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+        losses.update(loss.data.item(), input.size(0))
+        top1.update(prec1.item(), input.size(0))
+        top5.update(prec5.item(), input.size(0))
 
 
     print('\nTest set: Average loss: {}, Accuracy: ({})\n'.format(losses.avg, top1.avg))
@@ -274,12 +296,13 @@ def accuracy(output, target, topk=(1,)):
     _, pred = output.topk(maxk, 1, True, True)
     pred    = pred.t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
-
+    correct = correct.contiguous()
     res = []
     for k in topk:
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
 
+# writer.close()
 if __name__ == '__main__':
     main()
